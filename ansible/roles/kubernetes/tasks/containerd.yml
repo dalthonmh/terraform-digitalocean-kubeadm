@@ -1,0 +1,114 @@
+---
+# tasks file: roles/kubernetes/tasks/install-containerd.yaml
+
+# Step 1. Install containerd
+- name: Download containerd tarball if not cached
+  get_url:
+    url: >-
+      https://github.com/containerd/containerd/releases/download/v{{ containerd_version }}/containerd-{{ containerd_version }}-linux-amd64.tar.gz
+    dest: /tmp/containerd-{{ containerd_version }}-linux-amd64.tar.gz
+    mode: "0644"
+
+- name: Extract containerd to /usr/local
+  unarchive:
+    src: /tmp/containerd-{{ containerd_version }}-linux-amd64.tar.gz
+    dest: /usr/local
+    remote_src: yes
+    creates: /usr/local/bin/containerd
+  notify: Restart containerd
+
+- name: Create systemd service file for containerd
+  copy:
+    dest: /etc/systemd/system/containerd.service
+    content: |
+      [Unit]
+      Description=containerd container runtime
+      Documentation=https://containerd.io
+      After=network.target dbus.service
+
+      [Service]
+      ExecStartPre=-/sbin/modprobe overlay
+      ExecStart=/usr/local/bin/containerd
+
+      Type=notify
+      Delegate=yes
+      KillMode=process
+      Restart=always
+      RestartSec=5
+
+      LimitNPROC=infinity
+      LimitCORE=infinity
+      TasksMax=infinity
+      OOMScoreAdjust=-999
+
+      [Install]
+      WantedBy=multi-user.target
+  register: service_unit
+
+- name: Reload systemd
+  command: systemctl daemon-reload
+  when: service_unit.changed
+
+- name: Enable and start containerd service
+  service:
+    name: containerd
+    enabled: yes
+    state: started
+
+# Step 2. Install runc
+- name: Ensure /usr/local/sbin exists
+  file:
+    path: /usr/local/sbin
+    state: directory
+    mode: "0755"
+
+- name: Download and install runc
+  get_url:
+    url: https://github.com/opencontainers/runc/releases/download/v{{ runc_version }}/runc.amd64
+    dest: /usr/local/sbin/runc
+    mode: "0755"
+  notify: Restart containerd
+
+# Step 3. Download and extract CNI plugins
+- name: Ensure /opt/cni/bin exists
+  file:
+    path: /opt/cni/bin
+    state: directory
+    mode: "0755"
+
+- name: Download CNI plugins if not cached
+  get_url:
+    url: >-
+      https://github.com/containernetworking/plugins/releases/download/v{{ cni_plugins_version }}/cni-plugins-linux-amd64-v{{ cni_plugins_version }}.tgz
+    dest: /tmp/cni-plugins-linux-amd64-v{{ cni_plugins_version }}.tgz
+    mode: "0644"
+
+- name: Extract CNI plugins to /opt/cni/bin
+  unarchive:
+    src: /tmp/cni-plugins-linux-amd64-v{{ cni_plugins_version }}.tgz
+    dest: /opt/cni/bin
+    remote_src: yes
+    creates: /opt/cni/bin/loopback
+  notify: Restart containerd
+
+# Step 4. Configure containerd cgroup driver
+- name: Ensure containerd configuration directory exists
+  file:
+    path: /etc/containerd
+    state: directory
+    mode: "0755"
+
+- name: Generate default containerd config.toml if missing
+  shell: |
+    containerd config default > /etc/containerd/config.toml
+  args:
+    creates: /etc/containerd/config.toml
+  become: true
+
+- name: Ensure SystemdCgroup is set to true
+  replace:
+    path: /etc/containerd/config.toml
+    regexp: '^\s*SystemdCgroup\s*=\s*false'
+    replace: "SystemdCgroup = true"
+  notify: Restart containerd
+  become: true

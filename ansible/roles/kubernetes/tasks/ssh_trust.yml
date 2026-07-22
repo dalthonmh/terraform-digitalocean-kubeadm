@@ -1,0 +1,72 @@
+---
+# tasks file: roles/kubernetes/tasks/ssh_trust.yml
+#
+# Establishes passwordless SSH from the master node to every worker node.
+#
+# This cannot be done from the master itself (ssh-copy-id fails with
+# "Permission denied (publickey)" because the droplets only accept the
+# DigitalOcean key and password authentication is disabled). Ansible reaches
+# both sides from the control machine, so the key distribution happens here.
+# Uses only builtin modules: no extra collections required.
+
+# Step 1. Make sure the .ssh directory exists on every node
+- name: Ensure the root .ssh directory exists
+  file:
+    path: /root/.ssh
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  become: true
+
+# Step 2. Generate the master key pair (skipped if the key is already there)
+- name: Generate the master SSH key pair
+  command: >-
+    ssh-keygen -t ed25519 -C ansible@master
+    -f /root/.ssh/{{ ssh_key_name }} -N ""
+  args:
+    creates: /root/.ssh/{{ ssh_key_name }}
+  become: true
+  when: inventory_hostname in groups['master']
+
+# Step 3. Read the public key back so the worker tasks can use it
+- name: Read the master public key
+  slurp:
+    src: /root/.ssh/{{ ssh_key_name }}.pub
+  become: true
+  register: master_pubkey_raw
+  when: inventory_hostname in groups['master']
+
+- name: Store the master public key as a fact
+  set_fact:
+    master_ssh_pubkey: "{{ master_pubkey_raw.content | b64decode | trim }}"
+  when: inventory_hostname in groups['master']
+
+# Step 4. Authorize that key on every worker node
+- name: Authorize the master public key on the worker nodes
+  lineinfile:
+    path: /root/.ssh/authorized_keys
+    line: "{{ hostvars[groups['master'][0]]['master_ssh_pubkey'] }}"
+    state: present
+    create: true
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  when: inventory_hostname in groups['workers']
+
+# Step 5. Pre-seed known_hosts on the master so SSH never prompts
+- name: Scan worker host keys from the master node
+  shell: |
+    set -o pipefail
+    if ! ssh-keygen -F {{ hostvars[item].ansible_host }} -f /root/.ssh/known_hosts >/dev/null; then
+      ssh-keyscan -H {{ hostvars[item].ansible_host }} >> /root/.ssh/known_hosts
+      echo changed
+    fi
+  args:
+    executable: /bin/bash
+  register: keyscan_result
+  changed_when: "'changed' in keyscan_result.stdout"
+  become: true
+  loop: "{{ groups['workers'] }}"
+  when: inventory_hostname in groups['master']

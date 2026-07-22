@@ -1,0 +1,15 @@
+---
+# defaults file: roles/kubernetes/defaults/main.yml
+
+# Name of the SSH key used for master -> workers access.
+# Created and distributed by tasks/ssh_trust.yml
+ssh_key_name: id_ansible_master_debian
+
+# Component versions
+containerd_version: "2.1.4"
+runc_version: "1.3.2"
+cni_plugins_version: "1.8.0"
+
+# Kubernetes minor version used for the apt repository.
+# Must stay compatible with the Calico version pinned in files/post-install.sh
+kubernetes_version: "1.34"

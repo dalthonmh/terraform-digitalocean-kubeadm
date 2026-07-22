@@ -1,0 +1,41 @@
+---
+# tasks file: roles/kubernetes/tasks/post_installation.yml
+
+# Step 1. Configure kubectl aliases and autocompletion
+- name: Add kubectl aliases and autocompletion for multiple users
+  blockinfile:
+    path: "{{ '/root' if item == 'root' else '/home/' + item }}/.bashrc"
+    create: true
+    owner: "{{ item }}"
+    group: "{{ item }}"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK: kubectl settings"
+    block: |
+      # Kubernetes command shortcuts
+      alias k=kubectl
+      source <(kubectl completion bash)
+      complete -o default -F __start_kubectl k
+
+      # Dry-run shortcut
+      export do="--dry-run=client -o yaml"
+  become: true
+  loop:
+    - root
+
+# Step 2. Configure Vim editor preferences
+- name: Configure Vim settings for multiple users
+  blockinfile:
+    path: "{{ '/root' if item == 'root' else '/home/' + item }}/.vimrc"
+    create: true
+    owner: "{{ item }}"
+    group: "{{ item }}"
+    marker: '" {mark} ANSIBLE MANAGED BLOCK: vim settings'
+    block: |
+      set tabstop=2           " Ancho visual de un carácter TAB (8 por defecto)
+      set softtabstop=2       " Número de espacios que se insertan al presionar TAB
+      set shiftwidth=2        " Número de espacios usados para auto-indentación
+      set expandtab           " Convierte TABs en espacios
+      set autoindent          " Mantiene la indentación de la línea anterior
+      syntax on               " Habilita el resaltado de sintaxis
+  become: true
+  loop:
+    - root

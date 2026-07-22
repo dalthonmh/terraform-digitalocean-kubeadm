@@ -1,0 +1,78 @@
+---
+# tasks file: roles/kubernetes/tasks/prerequisites.yaml
+
+# Step 1: Disable swap
+- name: Check if swap is enabled
+  command: swapon --summary
+  register: swap_status
+  changed_when: swap_status.stdout != ''
+
+- name: Disable swap immediately
+  command: swapoff -a
+  when: swap_status.stdout != ''
+
+- name: Ensure swap is commented out in /etc/fstab
+  replace:
+    path: /etc/fstab
+    regexp: '^([^#].*\bswap\b.*)$'
+    replace: '# \1'
+  register: fstab_swap_disabled
+
+- name: Reload systemd if fstab was modified
+  command: systemctl daemon-reload
+  when: fstab_swap_disabled.changed
+
+- name: Mask all active systemd swap units
+  shell: |
+    for unit in $(systemctl list-unit-files --state=enabled,static,generated \
+                    | awk '$1 ~ /\.swap$/ && $2 != "masked" {print $1}'); do
+      systemctl mask "$unit" || true
+      echo changed
+    done
+  args:
+    executable: /bin/bash
+  register: swap_mask_result
+  changed_when: "'changed' in swap_mask_result.stdout"
+  become: true
+
+- name: Mask swap.target to prevent reactivation
+  systemd:
+    name: swap.target
+    masked: yes
+    enabled: no
+  become: true
+
+# Step 2: Enable networking prerequisites for Kubernetes
+- name: Load kernel modules for Kubernetes
+  copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: |
+      overlay
+      br_netfilter
+
+- name: Load kernel modules now
+  shell: |
+    if ! lsmod | grep -qw "{{ item }}"; then
+      modprobe {{ item }}
+      echo changed
+    fi
+  args:
+    executable: /bin/bash
+  register: modprobe_result
+  changed_when: "'changed' in modprobe_result.stdout"
+  loop:
+    - overlay
+    - br_netfilter
+
+- name: Configure sysctl parameters for Kubernetes networking
+  copy:
+    dest: /etc/sysctl.d/k8s.conf
+    content: |
+      net.bridge.bridge-nf-call-iptables = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.ipv4.ip_forward = 1
+  register: sysctl_config
+
+- name: Apply sysctl parameters
+  command: sysctl --system
+  when: sysctl_config.changed

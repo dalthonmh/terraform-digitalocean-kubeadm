@@ -1,0 +1,22 @@
+---
+# Step 1. Copy bash scripts to the master node
+- name: Copy bash scripts to the master node with execution permissions
+  copy:
+    src: "{{ item }}"
+    dest: /root/
+    owner: root
+    group: root
+    mode: "0755"
+  with_fileglob:
+    - "{{ role_path }}/files/*"
+  become: true
+
+# Step 2. Copy hosts.ini to the master node
+- name: Copy Ansible inventory (hosts.ini) to the master node
+  copy:
+    src: "{{ playbook_dir }}/hosts.ini"
+    dest: /root/hosts.ini
+    owner: root
+    group: root
+    mode: "0644"
+  become: true

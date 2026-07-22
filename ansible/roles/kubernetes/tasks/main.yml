@@ -1,0 +1,42 @@
+---
+# roles/kubernetes/tasks/main.yml
+
+# Step 1: System prerequisites
+- name: Install prerequisites
+  import_tasks: prerequisites.yml
+  tags:
+    - prereqs
+
+# Step 2: Container runtime setup (containerd)
+- name: Install and configure containerd
+  import_tasks: containerd.yml
+  tags:
+    - containerd
+    - runtime
+
+# Step 3: Install Kubernetes core binaries (kubeadm, kubelet, kubectl)
+- name: Install Kubernetes tools
+  import_tasks: install_k8s.yml
+  tags:
+    - k8s
+    - kube-tools
+
+# Step 4: Post-installation configuration (sysctl tweaks, service restarts, etc.)
+- name: Post installation tasks
+  import_tasks: post_installation.yml
+  tags:
+    - post
+
+# Step 5: Passwordless SSH from the master node to the workers
+- name: Set up SSH trust between master and workers
+  import_tasks: ssh_trust.yml
+  tags:
+    - ssh
+    - ssh-trust
+
+# Step 6: Copy scripts to master node
+- name: Copy scripts to master node
+  import_tasks: setup_master.yml
+  when: inventory_hostname in groups['master']
+  tags:
+    - copy-master

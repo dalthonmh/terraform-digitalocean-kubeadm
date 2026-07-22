@@ -1,0 +1,67 @@
+---
+# tasks file: roles/kubernetes/tasks/install_k8s.yml
+
+# Step 1. Install necessary dependencies
+- name: Update system packages
+  apt:
+    update_cache: yes
+    upgrade: dist
+
+- name: Install required dependencies
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+    state: present
+    update_cache: true
+
+# Step 2. Ensure the Kubernetes repository
+- name: Ensure /etc/apt/keyrings directory exists
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Download Kubernetes GPG key
+  get_url:
+    url: https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/Release.key
+    dest: /etc/apt/keyrings/kubernetes-apt-key.asc
+    mode: "0644"
+
+- name: Convert Kubernetes key to GPG format
+  command: gpg --dearmor -o /etc/apt/keyrings/kubernetes.gpg /etc/apt/keyrings/kubernetes-apt-key.asc
+  args:
+    creates: /etc/apt/keyrings/kubernetes.gpg
+
+- name: Add Kubernetes apt repository
+  copy:
+    dest: /etc/apt/sources.list.d/kubernetes.list
+    content: |
+      deb [signed-by=/etc/apt/keyrings/kubernetes.gpg] https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version }}/deb/ /
+
+# Step 3. Install Kubernetes components
+- name: Update apt cache after adding Kubernetes repo
+  apt:
+    update_cache: yes
+
+- name: Install Kubernetes components
+  apt:
+    name:
+      - kubelet
+      - kubeadm
+      - kubectl
+    state: present
+
+- name: Hold Kubernetes packages at current version
+  command: apt-mark hold kubelet kubeadm kubectl
+  register: apt_hold
+  changed_when: "'set on hold' in apt_hold.stdout"
+
+# Step 4. Enable and start kubelet
+- name: Enable and start kubelet service
+  systemd:
+    name: kubelet
+    enabled: true
+    state: started

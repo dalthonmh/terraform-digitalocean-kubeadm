@@ -1,0 +1,19 @@
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Variables con datos reales/sensibles
+terraform.tfvars
+*.auto.tfvars
+
+# Plan guardado
+*.tfplan
+.claude
+
+# ansible
+ansible.log
+*.retry
