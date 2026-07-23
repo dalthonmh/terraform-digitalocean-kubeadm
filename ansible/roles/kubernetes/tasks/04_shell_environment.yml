@@ -1,5 +1,5 @@
 ---
-# tasks file: roles/kubernetes/tasks/post_installation.yml
+# tasks file: roles/kubernetes/tasks/04_shell_environment.yml
 
 # Step 1. Configure kubectl aliases and autocompletion
 - name: Add kubectl aliases and autocompletion for multiple users

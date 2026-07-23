@@ -1,4 +1,9 @@
 ---
+# tasks file: roles/kubernetes/tasks/06_master_files.yml
+#
+# Ships files/*.sh and the Ansible inventory to /root on the master node, where
+# 07_cluster_bootstrap.yml runs them.
+
 # Step 1. Copy bash scripts to the master node
 - name: Copy bash scripts to the master node with execution permissions
   copy:

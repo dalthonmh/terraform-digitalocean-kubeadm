@@ -1,5 +1,5 @@
 ---
-# tasks file: roles/kubernetes/tasks/install-containerd.yaml
+# tasks file: roles/kubernetes/tasks/02_container_runtime.yml
 
 # Step 1. Install containerd
 - name: Download containerd tarball if not cached
@@ -112,3 +112,18 @@
     replace: "SystemdCgroup = true"
   notify: Restart containerd
   become: true
+
+# Step 5. Apply the pending restart now instead of at the end of the play.
+#
+# Handlers are flushed when the play ends, which is AFTER 07_cluster_bootstrap
+# runs "kubeadm init". Without this, kubeadm probes the CRI while containerd is
+# still running its old config (SystemdCgroup = false), autodetects "cgroupfs"
+# and starts the kubelet with that driver. The handler then restarts containerd
+# into systemd mode, and from that point every sandbox fails with:
+#
+#   expected cgroupsPath to be of format "slice:prefix:name" for systemd
+#   cgroups, got "/kubepods/burstable/..."
+#
+# which leaves Calico and CoreDNS stuck in ContainerCreating forever.
+- name: Apply the containerd configuration before Kubernetes starts
+  meta: flush_handlers

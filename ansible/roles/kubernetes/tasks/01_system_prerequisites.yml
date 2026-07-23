@@ -1,5 +1,5 @@
 ---
-# tasks file: roles/kubernetes/tasks/prerequisites.yaml
+# tasks file: roles/kubernetes/tasks/01_system_prerequisites.yml
 
 # Step 1: Disable swap
 - name: Check if swap is enabled

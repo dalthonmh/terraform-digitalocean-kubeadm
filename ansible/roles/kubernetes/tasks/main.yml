@@ -1,42 +1,57 @@
 ---
 # roles/kubernetes/tasks/main.yml
+#
+# The task files are numbered because the order matters: containerd has to be
+# running before kubeadm starts a kubelet, and the SSH trust has to be in place
+# before the master reaches the workers to join them. Keep the numbers in sync
+# with the import order below.
 
-# Step 1: System prerequisites
-- name: Install prerequisites
-  import_tasks: prerequisites.yml
+# 01: System prerequisites (swap, kernel modules, sysctl, apt dependencies)
+- name: Install system prerequisites
+  import_tasks: 01_system_prerequisites.yml
   tags:
     - prereqs
 
-# Step 2: Container runtime setup (containerd)
-- name: Install and configure containerd
-  import_tasks: containerd.yml
+# 02: Container runtime (containerd, runc, CNI plugins)
+- name: Install and configure the container runtime
+  import_tasks: 02_container_runtime.yml
   tags:
     - containerd
     - runtime
 
-# Step 3: Install Kubernetes core binaries (kubeadm, kubelet, kubectl)
-- name: Install Kubernetes tools
-  import_tasks: install_k8s.yml
+# 03: Kubernetes packages (kubeadm, kubelet, kubectl)
+- name: Install the Kubernetes packages
+  import_tasks: 03_kubernetes_packages.yml
   tags:
     - k8s
     - kube-tools
 
-# Step 4: Post-installation configuration (sysctl tweaks, service restarts, etc.)
-- name: Post installation tasks
-  import_tasks: post_installation.yml
+# 04: Shell environment (kubectl aliases, completion, vim settings).
+# Unrelated to files/post-install.sh despite the old "post_installation" name.
+- name: Configure the shell environment
+  import_tasks: 04_shell_environment.yml
   tags:
+    - shell
     - post
 
-# Step 5: Passwordless SSH from the master node to the workers
+# 05: Passwordless SSH from the master node to the workers
 - name: Set up SSH trust between master and workers
-  import_tasks: ssh_trust.yml
+  import_tasks: 05_ssh_trust.yml
   tags:
     - ssh
     - ssh-trust
 
-# Step 6: Copy scripts to master node
-- name: Copy scripts to master node
-  import_tasks: setup_master.yml
+# 06: Ship the scripts and the inventory to the master node
+- name: Copy the master node files
+  import_tasks: 06_master_files.yml
   when: inventory_hostname in groups['master']
   tags:
     - copy-master
+
+# 07: Initialize the cluster and join the workers (runs files/post-install.sh)
+- name: Bootstrap the Kubernetes cluster from the master node
+  import_tasks: 07_cluster_bootstrap.yml
+  when: inventory_hostname in groups['master']
+  tags:
+    - bootstrap
+    - post-install

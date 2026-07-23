@@ -1,5 +1,5 @@
 ---
-# tasks file: roles/kubernetes/tasks/ssh_trust.yml
+# tasks file: roles/kubernetes/tasks/05_ssh_trust.yml
 #
 # Establishes passwordless SSH from the master node to every worker node.
 #
@@ -55,7 +55,30 @@
   become: true
   when: inventory_hostname in groups['workers']
 
-# Step 5. Pre-seed known_hosts on the master so SSH never prompts
+# Step 5. Point the master SSH client at the right key for the workers.
+# The key name is not one of the identities SSH offers by default, so without
+# this an "ssh wk01" from the master fails with "Permission denied (publickey)".
+- name: Configure the master SSH client for the worker nodes
+  blockinfile:
+    path: /root/.ssh/config
+    create: true
+    owner: root
+    group: root
+    mode: "0600"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK: kubeadm workers"
+    block: |
+      {% for host in groups['workers'] %}
+      Host {{ host }} {{ hostvars[host].ansible_host }}
+          HostName {{ hostvars[host].ansible_host }}
+          User root
+          IdentityFile /root/.ssh/{{ ssh_key_name }}
+          IdentitiesOnly yes
+          StrictHostKeyChecking accept-new
+      {% endfor %}
+  become: true
+  when: inventory_hostname in groups['master']
+
+# Step 6. Pre-seed known_hosts on the master so SSH never prompts
 - name: Scan worker host keys from the master node
   shell: |
     set -o pipefail

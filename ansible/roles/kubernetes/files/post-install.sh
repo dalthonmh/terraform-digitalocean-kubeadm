@@ -15,19 +15,29 @@
 #
 # Requirements:
 # - Run this script as root or with sudo privileges.
-# - Ensure "hosts.ini" is in the same directory.
-# - Worker nodes must be reachable over SSH without a password. The Ansible
-#   playbook takes care of this (see roles/kubernetes/tasks/ssh_trust.yml), so
-#   run "ansible-playbook kube-play.yml" before this script.
+# - Ensure "hosts.ini" is in the same directory (or point INVENTORY_FILE at it).
+# - Worker nodes must be reachable over SSH without a password. This is set up
+#   by roles/kubernetes/tasks/05_ssh_trust.yml.
 #
 # Usage:
-#   sudo ./post-install.sh
+#   Normally you do NOT run this by hand: the playbook copies it to /root and
+#   executes it (roles/kubernetes/tasks/07_cluster_bootstrap.yml).
+#
+#     make up                # whole pipeline, from terraform to this script
+#     make post-install      # replay only this step
+#
+#   Manual fallback, from the master node:
+#     sudo ./post-install.sh
 
 # Rollback when any command fails
 set -euo pipefail
 
 INVENTORY_FILE="${INVENTORY_FILE:-./hosts.ini}"
 K8S_USER="root"
+# Key created and distributed by roles/kubernetes/tasks/05_ssh_trust.yml. It must
+# be passed explicitly: its name is not one of the identities SSH offers by
+# default, so without -i every worker answers "Permission denied (publickey)".
+SSH_KEY="${SSH_KEY:-/root/.ssh/id_ansible_master_debian}"
 POD_CIDR="192.168.0.0/16"
 # Pinned on purpose: the old "docs.projectcalico.org/manifests/calico.yaml"
 # URL still serves Calico v3.25.0 (2023), which does not support Kubernetes 1.34.
@@ -41,6 +51,17 @@ KUBECONFIG_PATH="$HOME_DIR/.kube/config"
 # Run kubectl always with the same kubeconfig, regardless of the invoking shell
 kc() {
   sudo KUBECONFIG="$KUBECONFIG_PATH" kubectl "$@"
+}
+
+# Single entry point for every SSH call to a worker node
+ssh_worker() {
+  local NODE="$1"
+  shift
+  ssh -i "$SSH_KEY" \
+    -o IdentitiesOnly=yes \
+    -o StrictHostKeyChecking=no \
+    -o ConnectTimeout=10 \
+    "$K8S_USER@$NODE" "$@"
 }
 
 # Function to get worker node IPs from hosts.ini
@@ -122,8 +143,7 @@ get_join_command() {
 # A worker is considered joined when it already has a kubelet kubeconfig
 worker_is_joined() {
   local NODE="$1"
-  ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$K8S_USER@$NODE" \
-    "test -f /etc/kubernetes/kubelet.conf" >/dev/null 2>&1
+  ssh_worker "$NODE" "test -f /etc/kubernetes/kubelet.conf" >/dev/null 2>&1
 }
 
 join_workers() {
@@ -149,7 +169,7 @@ join_workers() {
     fi
 
     echo "Connecting worker node $NODE to the cluster..."
-    ssh -o StrictHostKeyChecking=no "$K8S_USER@$NODE" "sudo $JOIN_CMD"
+    ssh_worker "$NODE" "sudo $JOIN_CMD"
   done
 }
 

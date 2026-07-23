@@ -2,7 +2,23 @@
 - name: Kubernetes node setup
   hosts: all
   become: true
-  gather_facts: true
+  # Disabled on purpose: implicit fact gathering runs before pre_tasks, and
+  # right after "terraform apply" the droplets accept TCP before sshd is ready.
+  # Facts are gathered explicitly below, once the connection is usable.
+  gather_facts: false
+
+  pre_tasks:
+    - name: Wait for SSH to be available on the node
+      wait_for_connection:
+        timeout: 300
+        sleep: 5
+      tags:
+        - always
+
+    - name: Gather facts
+      setup:
+      tags:
+        - always
 
   roles:
     - role: kubernetes

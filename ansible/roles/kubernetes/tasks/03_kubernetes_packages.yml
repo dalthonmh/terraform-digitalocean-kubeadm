@@ -1,5 +1,5 @@
 ---
-# tasks file: roles/kubernetes/tasks/install_k8s.yml
+# tasks file: roles/kubernetes/tasks/03_kubernetes_packages.yml
 
 # Step 1. Install necessary dependencies
 - name: Update system packages

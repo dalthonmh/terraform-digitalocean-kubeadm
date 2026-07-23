@@ -1,0 +1,36 @@
+---
+# tasks file: roles/kubernetes/tasks/07_cluster_bootstrap.yml
+#
+# Runs files/post-install.sh on the master node: kubeadm init, kubectl config,
+# Calico, and the worker join. The script is idempotent, so this task can be
+# replayed as many times as needed.
+#
+# Requires tasks/05_ssh_trust.yml to have run first (the script SSHes into the
+# workers to join them) and tasks/06_master_files.yml to have copied the script
+# and hosts.ini to /root.
+
+# Step 1. Execute the post-installation script
+- name: Bootstrap the Kubernetes cluster (post-install.sh)
+  command: /root/post-install.sh
+  args:
+    chdir: /root
+  environment:
+    INVENTORY_FILE: /root/hosts.ini
+    # Keep the key name defined in defaults/main.yml as the single source of
+    # truth instead of relying on the fallback baked into the script.
+    SSH_KEY: /root/.ssh/{{ ssh_key_name }}
+  become: true
+  register: post_install
+  # kubeadm init pulls images and waits for the control plane: give it room
+  # instead of blocking on the default SSH timeout.
+  async: 1800
+  poll: 15
+  changed_when: >-
+    'Initializing Kubernetes control plane' in post_install.stdout
+    or 'Installing Calico' in post_install.stdout
+    or 'Connecting worker node' in post_install.stdout
+
+# Step 2. Surface the script output in the playbook run
+- name: Show the post-install.sh output
+  debug:
+    var: post_install.stdout_lines

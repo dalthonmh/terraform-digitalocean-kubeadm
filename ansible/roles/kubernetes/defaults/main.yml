@@ -2,7 +2,7 @@
 # defaults file: roles/kubernetes/defaults/main.yml
 
 # Name of the SSH key used for master -> workers access.
-# Created and distributed by tasks/ssh_trust.yml
+# Created and distributed by tasks/05_ssh_trust.yml
 ssh_key_name: id_ansible_master_debian
 
 # Component versions
