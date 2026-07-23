@@ -130,17 +130,22 @@ Terraform only creates the droplets. Ansible installs Kubernetes on them, and a 
 `terraform apply` also writes `ansible/hosts.ini` with the current IPs, so there is nothing to update by hand. Run the four steps in order:
 
 ```bash
-terraform apply
-cd ansible && ansible-playbook kube-play.yml
+# export TF_VAR_do_token="do..."
+terraform apply --auto-approve
+sh scripts/update-ssh-config.sh
+cd ansible
+ansible -i hosts.ini all -m ping
+ansible-playbook kube-play.yml
 ssh root@<master-ip>
 cd /root && ./post-install.sh
+
 ```
 
 What each step does:
 
 | Step                             | Where        | What happens                                                                                                                                                        |
 | -------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `terraform apply`                | your machine | Creates the droplets, writes `ansible/hosts.ini` and prints the public IPs                                                                                           |
+| `terraform apply`                | your machine | Creates the droplets, writes `ansible/hosts.ini` and prints the public IPs                                                                                          |
 | `ansible-playbook kube-play.yml` | your machine | Installs containerd, kubeadm/kubelet/kubectl, sets up passwordless SSH from master to workers, and copies `post-install.sh` + `hosts.ini` to `/root/` on the master |
 | `ssh root@<master-ip>`           | your machine | Connects to the master node                                                                                                                                         |
 | `./post-install.sh`              | master node  | Runs `kubeadm init`, configures `kubectl`, installs Calico, joins the workers and prints the cluster status                                                         |
